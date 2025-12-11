@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Laporan & Absensi Magang</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <!-- HTML2PDF Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        .stat-card { transition: transform 0.2s; }
+        .stat-card:hover { transform: translateY(-2px); }
+        /* CSS khusus untuk format PDF agar tabel rapi saat di-generate */
+        #pdf-template { display: none; }
+    </style>
+</head>
+<body class="text-slate-800">
+
+    <!-- Navbar -->
+    <nav class="bg-slate-900 text-white shadow-lg sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center gap-3">
+                    <div class="bg-emerald-500 p-1.5 rounded-lg">
+                        <i class="fa-solid fa-clipboard-check text-white"></i>
+                    </div>
+                    <span class="font-bold text-lg tracking-tight">Magang Kemnaker Batch 2</span>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="exportToExcel()" class="bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-2 rounded shadow flex items-center gap-2 transition">
+                        <i class="fa-solid fa-file-excel"></i> <span class="hidden sm:inline">Excel</span>
+                    </button>
+                    <button onclick="generatePDF()" class="bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-2 rounded shadow flex items-center gap-2 transition">
+                        <i class="fa-solid fa-file-pdf"></i> <span class="hidden sm:inline">PDF</span>
+                    </button>
+                    <button onclick="fetchData()" class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-2 rounded shadow flex items-center gap-2 transition">
+                        <i class="fa-solid fa-sync" id="refreshIcon"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        
+        <!-- Config Alert -->
+        <div id="configSection" class="mb-6 bg-yellow-50 border-l-4 border-yellow-400 p-4 hidden">
+            <p class="text-sm text-yellow-700 mb-2">Setup URL Backend Google Apps Script:</p>
+            <div class="flex gap-2">
+                <input type="text" id="scriptUrlInput" placeholder="Paste URL Web App di sini..." class="flex-1 p-2 border rounded text-sm">
+                <button onclick="saveConfig()" class="bg-yellow-600 text-white px-4 py-1 rounded text-sm hover:bg-yellow-700">Simpan</button>
+            </div>
+        </div>
+
+        <!-- Dashboard Statistik Lengkap -->
+        <div class="mb-8">
+            <h3 class="text-lg font-bold text-gray-700 mb-4 flex items-center gap-2">
+                <i class="fa-solid fa-chart-simple text-blue-500"></i> Statistik & Presentasi Kehadiran
+            </h3>
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+                <!-- Total -->
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 stat-card">
+                    <p class="text-xs text-gray-500 uppercase font-bold">Total Laporan</p>
+                    <p class="text-2xl font-bold text-slate-800" id="valTotal">0</p>
+                    <p class="text-xs text-gray-400 mt-1">Hari Kerja</p>
+                </div>
+                <!-- Hadir -->
+                <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-emerald-500 stat-card">
+                    <p class="text-xs text-gray-500 uppercase font-bold">Hadir</p>
+                    <div class="flex items-baseline gap-2">
+                        <p class="text-2xl font-bold text-emerald-600" id="valHadir">0</p>
+                        <span class="text-xs font-bold bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded" id="persenHadir">0%</span>
+                    </div>
+                </div>
+                <!-- Izin -->
+                <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-yellow-500 stat-card">
+                    <p class="text-xs text-gray-500 uppercase font-bold">Izin/Sakit</p>
+                    <div class="flex items-baseline gap-2">
+                        <p class="text-2xl font-bold text-yellow-600" id="valIzin">0</p>
+                        <span class="text-xs font-bold bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded" id="persenIzin">0%</span>
+                    </div>
+                </div>
+                <!-- Alpha -->
+                <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-red-500 stat-card">
+                    <p class="text-xs text-gray-500 uppercase font-bold">Tanpa Ket.</p>
+                    <div class="flex items-baseline gap-2">
+                        <p class="text-2xl font-bold text-red-600" id="valAlpha">0</p>
+                        <span class="text-xs font-bold bg-red-100 text-red-700 px-1.5 py-0.5 rounded" id="persenAlpha">0%</span>
+                    </div>
+                </div>
+                <!-- Libur -->
+                <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-blue-400 stat-card">
+                    <p class="text-xs text-gray-500 uppercase font-bold">Libur</p>
+                    <div class="flex items-baseline gap-2">
+                        <p class="text-2xl font-bold text-blue-600" id="valLibur">0</p>
+                        <span class="text-xs font-bold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded" id="persenLibur">0%</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Form Input -->
+            <div class="lg:col-span-1 order-2 lg:order-1">
+                <div class="bg-white rounded-xl shadow-md overflow-hidden sticky top-24">
+                    <div class="bg-slate-800 p-4 flex justify-between items-center">
+                        <h2 class="font-bold text-white text-sm uppercase tracking-wide">Form Laporan Harian</h2>
+                    </div>
+                    
+                    <form id="attendanceForm" class="p-5 space-y-4">
+                        <!-- Tanggal -->
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Tanggal</label>
+                            <input type="date" name="tanggal" required class="w-full px-3 py-2 border bg-gray-50 border-gray-200 rounded text-sm focus:border-blue-500 outline-none">
+                        </div>
+
+                        <!-- Status -->
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Status Kehadiran</label>
+                            <select name="kehadiran" required class="w-full px-3 py-2 border bg-gray-50 border-gray-200 rounded text-sm focus:border-blue-500 outline-none">
+                                <option value="Hadir">Hadir</option>
+                                <option value="Izin/Sakit">Izin / Sakit (Sertakan Ket.)</option>
+                                <option value="Tanpa Keterangan">Tanpa Keterangan</option>
+                                <option value="Libur">Libur</option>
+                            </select>
+                        </div>
+
+                        <!-- Identitas -->
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Nama Lengkap</label>
+                                <input type="text" name="namaLengkap" required class="w-full px-3 py-2 border bg-gray-50 border-gray-200 rounded text-sm focus:border-blue-500 outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Panggilan</label>
+                                <input type="text" name="namaPanggilan" required class="w-full px-3 py-2 border bg-gray-50 border-gray-200 rounded text-sm focus:border-blue-500 outline-none">
+                            </div>
+                        </div>
+
+                        <!-- Detail -->
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Uraian Aktivitas</label>
+                            <textarea name="uraian" rows="3" required class="w-full px-3 py-2 border bg-gray-50 border-gray-200 rounded text-sm focus:border-blue-500 outline-none"></textarea>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Pembelajaran</label>
+                            <textarea name="pembelajaran" rows="2" class="w-full px-3 py-2 border bg-gray-50 border-gray-200 rounded text-sm focus:border-blue-500 outline-none"></textarea>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Kendala</label>
+                            <textarea name="kendala" rows="2" class="w-full px-3 py-2 border bg-gray-50 border-gray-200 rounded text-sm focus:border-blue-500 outline-none"></textarea>
+                        </div>
+
+                        <button type="submit" id="submitBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded shadow transition flex justify-center items-center gap-2 text-sm">
+                            <i class="fa-solid fa-paper-plane"></i> Kirim Laporan
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Tabel Log -->
+            <div class="lg:col-span-2 order-1 lg:order-2">
+                <div class="bg-white rounded-xl shadow-md overflow-hidden min-h-[500px]">
+                    <div class="bg-white p-4 border-b border-gray-100 flex justify-between items-center">
+                        <h2 class="font-bold text-gray-800">Riwayat Aktivitas</h2>
+                    </div>
+                    
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left text-gray-500">
+                            <thead class="text-xs text-gray-700 uppercase bg-gray-50">
+                                <tr>
+                                    <th scope="col" class="px-6 py-3">Tanggal</th>
+                                    <th scope="col" class="px-6 py-3">Nama</th>
+                                    <th scope="col" class="px-6 py-3">Status</th>
+                                    <th scope="col" class="px-6 py-3">Aktivitas</th>
+                                </tr>
+                            </thead>
+                            <tbody id="logTableBody">
+                                <!-- Data will inject here -->
+                            </tbody>
+                        </table>
+                        <div id="loader" class="hidden p-8 text-center">
+                            <i class="fa-solid fa-circle-notch fa-spin text-blue-500 text-2xl"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden Template for PDF Generation -->
+    <div id="pdf-template">
+        <div style="padding: 20px; font-family: sans-serif;">
+            <div style="text-align: center; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 10px;">
+                <h1 style="margin: 0; font-size: 24px;">Laporan Aktivitas Magang</h1>
+                <h2 style="margin: 5px 0 0 0; font-size: 16px; color: #666;">Kemnaker Batch 2</h2>
+                <p style="font-size: 12px; color: #888;" id="pdf-date-generated"></p>
+            </div>
+            
+            <div style="margin-bottom: 20px;">
+                <h3 style="font-size: 14px; border-bottom: 1px solid #ddd;">Ringkasan Kehadiran</h3>
+                <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                    <tr>
+                        <td style="padding: 5px;">Total Laporan: <strong id="pdf-total"></strong></td>
+                        <td style="padding: 5px;">Hadir: <strong id="pdf-hadir"></strong></td>
+                        <td style="padding: 5px;">Izin/Sakit: <strong id="pdf-izin"></strong></td>
+                        <td style="padding: 5px;">Alpha: <strong id="pdf-alpha"></strong></td>
+                    </tr>
+                </table>
+            </div>
+
+            <h3 style="font-size: 14px; border-bottom: 1px solid #ddd;">Detail Log</h3>
+            <table style="width: 100%; border-collapse: collapse; font-size: 10px;" border="1" cellpadding="5">
+                <thead style="background-color: #f3f4f6;">
+                    <tr>
+                        <th>Tanggal</th>
+                        <th>Nama</th>
+                        <th>Status</th>
+                        <th>Uraian</th>
+                        <th>Pembelajaran</th>
+                        <th>Kendala</th>
+                    </tr>
+                </thead>
+                <tbody id="pdf-table-body">
+                    <!-- PDF Rows -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const SCRIPT_URL_KEY = 'https://script.google.com/macros/s/AKfycbxB2KrNeqyB70nDLuXl0k4QG5vL_4eDlYSJvbTbJrgPqPP3zYrA883E7uUcz_nBG26a/exec';
+        let scriptUrl = localStorage.getItem(SCRIPT_URL_KEY);
+        let allLogData = []; // Store data for export
+
+        // Init
+        document.addEventListener('DOMContentLoaded', () => {
+            document.querySelector('input[name="tanggal"]').value = new Date().toISOString().split('T')[0];
+            
+            if (!scriptUrl) {
+                document.getElementById('configSection').classList.remove('hidden');
+            } else {
+                fetchData();
+            }
+        });
+
+        function saveConfig() {
+            const val = document.getElementById('scriptUrlInput').value.trim();
+            if(val) {
+                localStorage.setItem(SCRIPT_URL_KEY, val);
+                scriptUrl = val;
+                document.getElementById('configSection').classList.add('hidden');
+                fetchData();
+            }
+        }
+
+        // --- CORE FUNCTIONS ---
+
+        function fetchData() {
+            if(!scriptUrl) return;
+            
+            const loader = document.getElementById('loader');
+            const tbody = document.getElementById('logTableBody');
+            const icon = document.getElementById('refreshIcon');
+            
+            loader.classList.remove('hidden');
+            tbody.innerHTML = '';
+            icon.classList.add('fa-spin');
+
+            fetch(scriptUrl)
+            .then(res => res.json())
+            .then(data => {
+                allLogData = data.allLogs; // Simpan untuk export
+                renderStats(data);
+                renderTable(data.allLogs);
+            })
+            .catch(err => {
+                console.error(err);
+                alert("Gagal memuat data. Periksa koneksi atau URL Script.");
+            })
+            .finally(() => {
+                loader.classList.add('hidden');
+                icon.classList.remove('fa-spin');
+            });
+        }
+
+        function renderStats(data) {
+            const total = data.total || 1; // Avoid division by zero
+            
+            const updateStat = (idVal, idPersen, count) => {
+                document.getElementById(idVal).innerText = count;
+                const percent = Math.round((count / total) * 100);
+                document.getElementById(idPersen).innerText = percent + "%";
+            };
+
+            document.getElementById('valTotal').innerText = data.total;
+            updateStat('valHadir', 'persenHadir', data.hadir);
+            updateStat('valIzin', 'persenIzin', data.izin);
+            updateStat('valAlpha', 'persenAlpha', data.alpha);
+            updateStat('valLibur', 'persenLibur', data.libur);
+        }
+
+        function renderTable(logs) {
+            const tbody = document.getElementById('logTableBody');
+            
+            if(logs.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" class="px-6 py-4 text-center">Belum ada data</td></tr>`;
+                return;
+            }
+
+            // Show max 50 recent logs in web view to keep it light
+            const viewLogs = logs.slice(0, 50); 
+            
+            viewLogs.forEach(log => {
+                let badgeClass = '';
+                if(log.kehadiran === 'Hadir') badgeClass = 'bg-emerald-100 text-emerald-800';
+                else if(log.kehadiran === 'Libur') badgeClass = 'bg-blue-100 text-blue-800';
+                else if(log.kehadiran === 'Tanpa Keterangan') badgeClass = 'bg-red-100 text-red-800';
+                else badgeClass = 'bg-yellow-100 text-yellow-800';
+
+                const row = `
+                    <tr class="bg-white border-b hover:bg-gray-50">
+                        <td class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">
+                            ${new Date(log.tanggal).toLocaleDateString('id-ID')}
+                        </td>
+                        <td class="px-6 py-4">${log.nama}</td>
+                        <td class="px-6 py-4">
+                            <span class="${badgeClass} text-xs font-medium px-2.5 py-0.5 rounded">${log.kehadiran}</span>
+                        </td>
+                        <td class="px-6 py-4 truncate max-w-xs" title="${log.uraian}">${log.uraian}</td>
+                    </tr>
+                `;
+                tbody.insertAdjacentHTML('beforeend', row);
+            });
+        }
+
+        // --- SUBMIT FORM ---
+
+        document.getElementById('attendanceForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('submitBtn');
+            const originalText = btn.innerHTML;
+            
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Mengirim...`;
+
+            const formData = new FormData(e.target);
+            const data = Object.fromEntries(formData.entries());
+
+            fetch(scriptUrl, {
+                method: 'POST',
+                body: JSON.stringify(data)
+            })
+            .then(res => res.json())
+            .then(res => {
+                if(res.result === 'success') {
+                    alert("Laporan berhasil disimpan!");
+                    e.target.reset();
+                    document.querySelector('input[name="tanggal"]').value = new Date().toISOString().split('T')[0];
+                    fetchData();
+                } else {
+                    throw new Error(res.error);
+                }
+            })
+            .catch(err => alert("Gagal mengirim: " + err))
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            });
+        });
+
+        // --- EXPORT FUNCTIONS ---
+
+        function exportToExcel() {
+            if(allLogData.length === 0) return alert("Tidak ada data untuk diekspor");
+
+            // CSV Header
+            let csvContent = "data:text/csv;charset=utf-8,";
+            csvContent += "Tanggal,Nama Lengkap,Status,Uraian Aktivitas,Pembelajaran,Kendala\n";
+
+            // CSV Rows
+            allLogData.forEach(row => {
+                // Clean strings to prevent CSV breakage
+                const clean = (str) => `"${String(str).replace(/"/g, '""')}"`;
+                
+                const dateStr = new Date(row.tanggal).toLocaleDateString('id-ID');
+                const rowStr = [
+                    clean(dateStr),
+                    clean(row.nama),
+                    clean(row.kehadiran),
+                    clean(row.uraian),
+                    clean(row.pembelajaran),
+                    clean(row.kendala)
+                ].join(",");
+                csvContent += rowStr + "\n";
+            });
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "Laporan_Magang_" + new Date().toISOString().split('T')[0] + ".csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function generatePDF() {
+            if(allLogData.length === 0) return alert("Tidak ada data untuk diekspor");
+
+            // 1. Populate Hidden Template
+            document.getElementById('pdf-date-generated').innerText = "Generated: " + new Date().toLocaleString('id-ID');
+            document.getElementById('pdf-total').innerText = document.getElementById('valTotal').innerText;
+            document.getElementById('pdf-hadir').innerText = document.getElementById('valHadir').innerText;
+            document.getElementById('pdf-izin').innerText = document.getElementById('valIzin').innerText;
+            document.getElementById('pdf-alpha').innerText = document.getElementById('valAlpha').innerText;
+
+            const tbody = document.getElementById('pdf-table-body');
+            tbody.innerHTML = '';
+            
+            allLogData.forEach(log => {
+                const dateStr = new Date(log.tanggal).toLocaleDateString('id-ID');
+                const html = `
+                    <tr>
+                        <td>${dateStr}</td>
+                        <td>${log.nama}</td>
+                        <td>${log.kehadiran}</td>
+                        <td>${log.uraian}</td>
+                        <td>${log.pembelajaran || '-'}</td>
+                        <td>${log.kendala || '-'}</td>
+                    </tr>
+                `;
+                tbody.insertAdjacentHTML('beforeend', html);
+            });
+
+            // 2. Generate PDF using html2pdf
+            const element = document.getElementById('pdf-template');
+            element.style.display = 'block'; // Show momentarily for capture
+
+            const opt = {
+                margin:       10,
+                filename:     'Laporan_Magang_Full.pdf',
+                image:        { type: 'jpeg', quality: 0.98 },
+                html2canvas:  { scale: 2 },
+                jsPDF:        { unit: 'mm', format: 'a4', orientation: 'landscape' }
+            };
+
+            html2pdf().set(opt).from(element).save().then(() => {
+                element.style.display = 'none'; // Hide again
+            });
+        }
+    </script>
+</body>
+</html>
